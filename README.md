@@ -14,8 +14,8 @@ You can also follow the development on [our ModDB Page](https://www.moddb.com/mo
 
 ### Prerequisites
 
-- **Mono** (version 6.4 or greater) - required for running the game
-- **Python 3** (or Python 2) - required for build scripts
+- **.NET 6.0** (or **Mono** version 6.4+) - required for running the game
+- **Python 3** - required for build scripts (must be available as `python` or create a symlink)
 - **Git** - for version control and engine fetching
 - **curl** or **wget** - for downloading the engine
 
@@ -107,7 +107,7 @@ The packaging scripts create standalone installers that can be distributed to pl
 
 | Platform | Additional Requirements |
 |----------|------------------------|
-| **macOS** | Xcode command line tools (`clang`) |
+| **macOS** | Xcode command line tools (`clang`), macOS 10.15+ |
 | **Linux** | None (downloads AppImageTool automatically) |
 | **Windows** | `makensis` (NSIS), `wine64`, ImageMagick (`convert`) |
 
