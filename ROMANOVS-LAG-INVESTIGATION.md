@@ -285,16 +285,37 @@ public Player Owner => IsMirage ? cachedEffectiveOwner : null;
 
 ### Summary of Hotspots
 
-| Priority | File | Line(s) | Category | Fix Complexity |
-|----------|------|---------|----------|----------------|
-| 1 | BallisticMissileOld.cs | 128 | LINQ allocation | Easy |
-| 1 | BallisticMissileOld.cs | 146-148 | Uncached property | Easy |
-| 1 | BallisticMissileOld.cs | 189 | Spatial index | Medium |
-| 1 | BallisticMissileFlyOld.cs | 50 | Trigonometry | Easy |
-| 2 | MissileSpawnerOldMaster.cs | 108 | Trait lookup | Easy |
-| 2 | LegacySpreadWarhead.cs | 46-49 | LINQ per victim | Medium |
-| 2 | LegacySpreadWarhead.cs | 61-62 | LINQ sorting | Easy |
-| 3 | Mirage.cs | 50, 117 | Linear search | Easy |
+| Priority | File | Line(s) | Category | Fix Complexity | Status |
+|----------|------|---------|----------|----------------|--------|
+| 1 | BallisticMissileOld.cs | 128 | LINQ allocation | Easy | **FIXED** |
+| 1 | BallisticMissileOld.cs | 146-148 | Uncached property | Easy | **FIXED** |
+| 1 | BallisticMissileOld.cs | 189 | Spatial index | Medium | Engine-level |
+| 1 | BallisticMissileFlyOld.cs | 50 | Trigonometry | Easy | **FIXED** |
+| 2 | MissileSpawnerOldMaster.cs | 163 | LINQ in tick | Easy | **FIXED** |
+| 2 | LegacySpreadWarhead.cs | 46-49 | LINQ per victim | Medium | **FIXED** |
+| 2 | LegacySpreadWarhead.cs | 61-62 | LINQ sorting | Easy | **FIXED** |
+| 3 | Mirage.cs | 50, 117 | Linear search | Easy | **FIXED** |
+| 3 | HeliGrantConditionOnDeploy.cs | 198-199 | O(n*m) search | Easy | **FIXED** |
+| 3 | SpawnActorOrWeaponWarhead.cs | 112 | Player lookup | Easy | **FIXED** |
+| 3 | SpawnBuildingOrWeaponWarhead.cs | 102 | Player lookup | Easy | **FIXED** |
+
+### Completed Optimizations (Branch: perf/lag-investigation)
+
+The following optimizations have been implemented:
+
+#### Commit 1: Missile System Optimization
+- **BallisticMissileOld.cs**: Cached `ISpeedModifier[]` array and pre-computed `MovementSpeed` value
+- **BallisticMissileFlyOld.cs**: Pre-computed `LaunchAngle.Tan()` in constructor
+- **MissileSpawnerOldMaster.cs**: Pre-allocated reload modifier buffer, eliminated LINQ `.Select()`
+
+#### Commit 2: Mirage System Optimization
+- **Mirage.cs**: Cached `effectiveOwner` player reference in both `Mirage` and `MirageTooltip` classes
+
+#### Commit 3: Warhead and Deploy System Optimization
+- **LegacySpreadWarhead.cs**: Replaced LINQ chain with manual loops for HitShape lookup and building cell damage
+- **HeliGrantConditionOnDeploy.cs**: Used HashSet for O(1) actor ID lookup instead of O(n) Contains()
+- **SpawnActorOrWeaponWarhead.cs**: Cached internal owner player reference
+- **SpawnBuildingOrWeaponWarhead.cs**: Cached owner player reference
 
 ### Testing Recommendations
 

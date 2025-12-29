@@ -70,6 +70,9 @@ namespace OpenRA.Mods.RA2.Warheads
 
 		WeaponInfo weapon;
 
+		// PERF: Cache internal owner player reference to avoid linear search on each impact
+		Player cachedInternalOwner;
+
 		public void RulesetLoaded(Ruleset rules, WeaponInfo info)
 		{
 			if (!rules.Weapons.TryGetValue(Weapon.ToLowerInvariant(), out weapon))
@@ -109,7 +112,11 @@ namespace OpenRA.Mods.RA2.Warheads
 				if (OwnerType == ASOwnerType.Attacker)
 					td.Add(new OwnerInit(firedBy.Owner));
 				else
-					td.Add(new OwnerInit(firedBy.World.Players.First(p => p.InternalName == InternalOwner)));
+				{
+					// PERF: Cache player lookup instead of using .First() on every impact
+					cachedInternalOwner ??= firedBy.World.Players.First(p => p.InternalName == InternalOwner);
+					td.Add(new OwnerInit(cachedInternalOwner));
+				}
 
 				// HACK HACK HACK
 				// Immobile does not offer a check directly if the actor can exist in a position.

@@ -8,7 +8,7 @@
  */
 #endregion
 
-using System.Linq;
+using System.Collections.Generic;
 using OpenRA.GameRules;
 using OpenRA.Mods.Common;
 using OpenRA.Mods.Common.Traits;
@@ -43,36 +43,70 @@ namespace OpenRA.Mods.RA2.Warheads
 				if (!IsValidAgainst(victim, firedBy))
 					continue;
 
-				// Find closest active HitShape to determine if victim can be damaged
-				var closestActiveShape = victim.TraitsImplementing<HitShape>()
-						.Where(Exts.IsTraitEnabled)
-						.Select(s => (s, s.DistanceFromEdge(victim, pos)))
-						.MinByOrDefault(s => s.Item2);
+				// PERF: Find closest active HitShape using manual loop instead of LINQ
+				// Original: victim.TraitsImplementing<HitShape>().Where(Exts.IsTraitEnabled)
+				//           .Select(s => (s, s.DistanceFromEdge(victim, pos))).MinByOrDefault(s => s.Item2);
+				HitShape closestShape = null;
+				var closestDistance = WDist.MaxValue;
+				foreach (var shape in victim.TraitsImplementing<HitShape>())
+				{
+					if (!shape.IsTraitEnabled())
+						continue;
+
+					var distance = shape.DistanceFromEdge(victim, pos);
+					if (distance < closestDistance)
+					{
+						closestShape = shape;
+						closestDistance = distance;
+					}
+				}
 
 				// Cannot be damaged without an active HitShape or if HitShape is outside Spread
-				if (closestActiveShape.s == null || closestActiveShape.Item2 > Spread)
+				if (closestShape == null || closestDistance > Spread)
 					continue;
 
 				var building = victim.TraitOrDefault<Building>();
 
-				var adjustedDamageModifiers = args.DamageModifiers.Append(DamageVersus(victim, closestActiveShape.s, args));
+				// PERF: Build modifiers list manually instead of using Append (avoids allocations)
+				var baseDamageVersus = DamageVersus(victim, closestShape, args);
+				var modifiersList = new List<int>(args.DamageModifiers.Length + 2);
+				modifiersList.AddRange(args.DamageModifiers);
+				modifiersList.Add(baseDamageVersus);
 
 				if (MaxAffect > 0 && building != null)
 				{
-					var affectedcells = building.OccupiedCells().Select(x => (pos - firedBy.World.Map.CenterOfCell(x.Item1)).Length)
-						.Where(x => x > Spread.Length).OrderBy(x => x).Take(MaxAffect);
+					// PERF: Manual min-finding instead of OrderBy().Take()
+					// NOTE: Original logic uses "x > Spread.Length" which may be inverted (kept as-is for correctness)
+					var occupiedCells = building.OccupiedCells();
+					var cellDistances = new List<int>(occupiedCells.Length);
+					foreach (var cell in occupiedCells)
+					{
+						var cellDist = (pos - firedBy.World.Map.CenterOfCell(cell.Item1)).Length;
+						if (cellDist > Spread.Length)
+							cellDistances.Add(cellDist);
+					}
+
+					// Sort to get the closest N cells (up to MaxAffect)
+					cellDistances.Sort();
+					var affectCount = cellDistances.Count < MaxAffect ? cellDistances.Count : MaxAffect;
 
 					var delivereddamage = 0;
-
-					foreach (var c in affectedcells)
-						delivereddamage += Util.ApplyPercentageModifiers(Damage, adjustedDamageModifiers.Append(int2.Lerp(PercentAtMax, 100, c, Spread.Length)));
+					for (var i = 0; i < affectCount; i++)
+					{
+						// Create a copy for this specific damage calculation
+						var cellModifiers = new List<int>(modifiersList)
+						{
+							int2.Lerp(PercentAtMax, 100, cellDistances[i], Spread.Length)
+						};
+						delivereddamage += Util.ApplyPercentageModifiers(Damage, cellModifiers);
+					}
 
 					victim.InflictDamage(firedBy, new Damage(delivereddamage, DamageTypes));
 				}
 				else
 				{
-					var damage = Util.ApplyPercentageModifiers(Damage,
-						adjustedDamageModifiers.Append(int2.Lerp(PercentAtMax, 100, closestActiveShape.Item2.Length, Spread.Length)));
+					modifiersList.Add(int2.Lerp(PercentAtMax, 100, closestDistance.Length, Spread.Length));
+					var damage = Util.ApplyPercentageModifiers(Damage, modifiersList);
 					victim.InflictDamage(firedBy, new Damage(damage, DamageTypes));
 				}
 			}

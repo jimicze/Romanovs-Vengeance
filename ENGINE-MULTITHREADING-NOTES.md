@@ -193,3 +193,71 @@ This is the most promising area:
 
 *Created: 2025-12-29*
 *Purpose: Document potential engine-level multi-threading improvements for upstream contribution*
+
+---
+
+## Engine-Level Performance Hotspots (Single-Threaded Fixes)
+
+These are specific performance issues identified in the OpenRA engine that could be fixed without multi-threading, but require engine-level changes. These are documented here for potential upstream contribution.
+
+### CRITICAL: Movement Order Delay (UnitOrderGenerator)
+
+**File**: `engine/OpenRA.Mods.Common/Orders/UnitOrderGenerator.cs`
+**Lines**: 162-165
+
+**Issue**: When a player issues a movement command, the engine performs expensive target resolution synchronously on every mouse click.
+
+**Current Behavior**:
+```csharp
+// Line 162-165 (conceptual)
+foreach (var subject in selection)
+{
+    var target = ResolveTargetForSubject(subject, xy);
+    // Expensive per-unit calculation on click
+}
+```
+
+**Impact**: This is the PRIMARY cause of the 1-2 second input lag when clicking to move units. With 50+ selected units, the synchronous resolution causes noticeable delay.
+
+**Proposed Fix**:
+- Cache target resolution results per-tick
+- Batch movement order processing
+- Defer detailed pathfinding to background
+
+### HIGH: Production Queue Tick Loop (ClassicProductionQueue)
+
+**File**: `engine/OpenRA.Mods.Common/Traits/Player/ClassicProductionQueue.cs`
+**Line**: ~56
+
+**Issue**: Production tick iterates all production queues every game tick with LINQ operations.
+
+**Impact**: In late-game with many production buildings, this adds unnecessary overhead to each tick.
+
+**Proposed Fix**:
+- Use dirty flag to only process queues with active production
+- Cache buildable actor lists until prerequisites change
+
+### MEDIUM: GroupBy Allocation (ClassicParallelProductionQueue)
+
+**File**: `engine/OpenRA.Mods.Common/Traits/Player/ClassicParallelProductionQueue.cs`
+**Line**: ~91
+
+**Issue**: Uses `.GroupBy()` LINQ operation in tick-level code, causing allocations.
+
+**Impact**: Minor per-tick allocations that accumulate during long games.
+
+**Proposed Fix**:
+- Pre-group production items by type
+- Update groups only when items are added/removed
+
+---
+
+## Summary of Engine Fixes for Upstream
+
+| Priority | File | Issue | Fix Type |
+|----------|------|-------|----------|
+| CRITICAL | UnitOrderGenerator.cs:162-165 | Synchronous target resolution | Caching/batching |
+| HIGH | ClassicProductionQueue.cs:56 | Tick loop overhead | Dirty flag |
+| MEDIUM | ClassicParallelProductionQueue.cs:91 | GroupBy allocation | Pre-grouping |
+
+These fixes would require changes to the OpenRA engine and should be submitted as pull requests to the upstream repository after proper testing.
