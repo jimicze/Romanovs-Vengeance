@@ -14,8 +14,8 @@ You can also follow the development on [our ModDB Page](https://www.moddb.com/mo
 
 The README and code are copied automatically when you fork. To keep the rest of the project metadata:
 
-- **Wiki:** clone the original wiki and push it to your fork.
-  ```
+- **Wiki:** clone the original wiki and push it to your fork (replace `<your-username>`).
+  ```sh
   git clone https://github.com/MustaphaTR/Romanovs-Vengeance.wiki.git
   cd Romanovs-Vengeance.wiki
   git remote set-url origin https://github.com/<your-username>/Romanovs-Vengeance.wiki.git
