@@ -2,7 +2,7 @@
 
 This document outlines potential areas in the OpenRA engine that could benefit from multi-threading to improve performance. These are notes for potential upstream contribution to the OpenRA project.
 
-**Related investigation**: See [ROMANOVS-LAG-INVESTIGATION.md](../ROMANOVS-LAG-INVESTIGATION.md) for the full performance analysis.
+**Related investigation**: See [ROMANOVS-LAG-INVESTIGATION.md](ROMANOVS-LAG-INVESTIGATION.md) for the full performance analysis.
 
 ---
 
