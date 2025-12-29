@@ -9,7 +9,6 @@
 #endregion
 
 using System.Collections.Generic;
-using System.Linq;
 using OpenRA.Mods.AS.Traits;
 using OpenRA.Mods.Common;
 using OpenRA.Mods.Common.Traits;
@@ -55,6 +54,9 @@ namespace OpenRA.Mods.RA2.Traits
 		int launchCondition = Actor.InvalidConditionToken;
 		int launchConditionTicks;
 
+		// Cached array for reload modifier calculation to avoid LINQ allocation per tick
+		int[] reloadModifierBuffer;
+
 		public MissileSpawnerOldMaster(ActorInitializer init, MissileSpawnerOldMasterInfo info)
 			: base(init, info)
 		{
@@ -64,6 +66,9 @@ namespace OpenRA.Mods.RA2.Traits
 		protected override void Created(Actor self)
 		{
 			base.Created(self);
+
+			// Pre-allocate buffer for reload modifiers
+			reloadModifierBuffer = new int[reloadModifiers.Length];
 
 			// Spawn initial load.
 			var burst = Info.InitialActorCount == -1 ? Info.Actors.Length : Info.InitialActorCount;
@@ -158,9 +163,15 @@ namespace OpenRA.Mods.RA2.Traits
 				{
 					Replenish(self, SlaveEntries);
 
-				// If there's something left to spawn, restart the timer.
-				if (SelectEntryToSpawn(SlaveEntries) != null)
-					respawnTicks = Util.ApplyPercentageModifiers(Info.RespawnTicks, reloadModifiers.Select(rm => rm.GetReloadModifier(MissileSpawnerOldMasterInfo.Name)));
+					// If there's something left to spawn, restart the timer.
+					if (SelectEntryToSpawn(SlaveEntries) != null)
+					{
+						// Use pre-allocated buffer to avoid LINQ allocation
+						for (var i = 0; i < reloadModifiers.Length; i++)
+							reloadModifierBuffer[i] = reloadModifiers[i].GetReloadModifier(MissileSpawnerOldMasterInfo.Name);
+
+						respawnTicks = Util.ApplyPercentageModifiers(Info.RespawnTicks, reloadModifierBuffer);
+					}
 				}
 			}
 		}
