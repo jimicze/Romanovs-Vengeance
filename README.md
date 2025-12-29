@@ -15,7 +15,7 @@ You can also follow the development on [our ModDB Page](https://www.moddb.com/mo
 ### Prerequisites
 
 - **.NET 6.0** (or **Mono** version 6.4+) - required for running the game
-- **Python 3** - required for build scripts (must be available as `python` or create a symlink)
+- **Python 3** - required for build scripts
 - **Git** - for version control and engine fetching
 - **curl** or **wget** - for downloading the engine
 

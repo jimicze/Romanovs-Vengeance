@@ -435,13 +435,13 @@ virus:
 		Name: opentopped
 		Weapon: Virusgun
 		ReloadingCondition: reload-ap
-		PauseOnCondition: chronodisable || webdisable || dogstun
+		PauseOnCondition: chronodisable || webdisable || dogstun || reload-ap
 		RequiresCondition: !rank-elite
 	Armament@elite-opentopped:
 		Name: opentopped
 		Weapon: VirusgunE
 		ReloadingCondition: reload-ap
-		PauseOnCondition: chronodisable || webdisable || dogstun
+		PauseOnCondition: chronodisable || webdisable || dogstun || reload-ap
 		RequiresCondition: rank-elite
 	Armament@garrisoned:
 		Name: garrisoned
