@@ -25,8 +25,11 @@ The README and code are copied automatically when you fork. To keep the rest of 
   ```
   gh api repos/MustaphaTR/Romanovs-Vengeance/issues --paginate > issues.json
   while IFS= read -r issue; do
-    labels=$(echo "$issue" | jq -r '.labels[]? // empty')
-    label_args=$(printf '%s\n' "$labels" | awk 'NF {printf " --label \"%s\"", $0}')
+    readarray -t labels < <(echo "$issue" | jq -r '.labels[]? // empty')
+    label_args=""
+    if [ ${#labels[@]} -gt 0 ]; then
+      label_args=$(printf ' --label "%s"' "${labels[@]}")
+    fi
     gh issue create --repo <your-username>/Romanovs-Vengeance \
       --title "$(echo "$issue" | jq -r .title)" \
       --body "$(echo "$issue" | jq -r .body)" \
