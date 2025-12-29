@@ -1,4 +1,4 @@
-﻿#region Copyright & License Information
+#region Copyright & License Information
 /*
  * Copyright (c) The OpenRA Developers and Contributors
  * This file is part of OpenRA, which is free software. It is made
@@ -58,6 +58,9 @@ namespace OpenRA.Mods.RA2.Warheads
 
 		WeaponInfo weapon;
 
+		// PERF: Cache owner player reference to avoid linear search on each impact
+		Player cachedOwnerPlayer;
+
 		public void RulesetLoaded(Ruleset rules, WeaponInfo info)
 		{
 			if (!rules.Weapons.TryGetValue(Weapon.ToLowerInvariant(), out weapon))
@@ -99,7 +102,11 @@ namespace OpenRA.Mods.RA2.Warheads
 				if (Owner == null)
 					td.Add(new OwnerInit(firedBy.Owner));
 				else
-					td.Add(new OwnerInit(firedBy.World.Players.First(p => p.InternalName == Owner)));
+				{
+					// PERF: Cache player lookup instead of using .First() on every impact
+					cachedOwnerPlayer ??= firedBy.World.Players.First(p => p.InternalName == Owner);
+					td.Add(new OwnerInit(cachedOwnerPlayer));
+				}
 
 				while (cell.MoveNext() && !placed)
 				{

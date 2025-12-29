@@ -195,11 +195,22 @@ namespace OpenRA.Mods.RA2.Traits
 			if (string.IsNullOrEmpty(actorString))
 				return false;
 
-			var actorIDs = actorString.Split(',').Select(x => { uint.TryParse(x, out var result); return result; });
-			var actors = self.World.Actors.Where(x => x.IsInWorld && !x.IsDead && actorIDs.Contains(x.ActorID));
-
-			foreach (var a in actors)
+			// PERF: Use HashSet for O(1) lookup instead of O(n) Contains() on IEnumerable
+			// Original: var actorIDs = actorString.Split(',').Select(x => { uint.TryParse(x, out var result); return result; });
+			//           var actors = self.World.Actors.Where(x => x.IsInWorld && !x.IsDead && actorIDs.Contains(x.ActorID));
+			var idStrings = actorString.Split(',');
+			var actorIDSet = new HashSet<uint>(idStrings.Length);
+			foreach (var idStr in idStrings)
 			{
+				if (uint.TryParse(idStr, out var id))
+					actorIDSet.Add(id);
+			}
+
+			foreach (var a in self.World.Actors)
+			{
+				if (!a.IsInWorld || a.IsDead || !actorIDSet.Contains(a.ActorID))
+					continue;
+
 				var gcod = a.TraitOrDefault<HeliGrantConditionOnDeploy>();
 				if (gcod != null && gcod.DeployState != DeployState.Deployed)
 					return true;

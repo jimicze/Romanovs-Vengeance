@@ -72,7 +72,9 @@ namespace OpenRA.Mods.RA2.Traits
 		readonly Actor self;
 		public Target Target;
 
-		IEnumerable<int> speedModifiers;
+		// PERF: Cache speed modifier traits and computed speed to avoid recalculation every tick
+		ISpeedModifier[] speedModifierTraits;
+		int cachedMovementSpeed;
 
 		[Sync]
 		public WAngle Facing
@@ -125,7 +127,10 @@ namespace OpenRA.Mods.RA2.Traits
 
 		void INotifyCreated.Created(Actor self)
 		{
-			speedModifiers = self.TraitsImplementing<ISpeedModifier>().ToArray().Select(sm => sm.GetSpeedModifier());
+			// PERF: Cache speed modifier traits array once, compute speed value upfront
+			// This avoids LINQ allocation and recalculation on every MovementSpeed access
+			speedModifierTraits = self.TraitsImplementing<ISpeedModifier>().ToArray();
+			cachedMovementSpeed = Util.ApplyPercentageModifiers(Info.Speed, speedModifierTraits.Select(sm => sm.GetSpeedModifier()));
 		}
 
 		void INotifyAddedToWorld.AddedToWorld(Actor self)
@@ -143,10 +148,8 @@ namespace OpenRA.Mods.RA2.Traits
 			return NoCells;
 		}
 
-		public int MovementSpeed
-		{
-			get { return Util.ApplyPercentageModifiers(Info.Speed, speedModifiers); }
-		}
+		// PERF: Return cached speed value instead of recalculating on every access
+		public int MovementSpeed => cachedMovementSpeed;
 
 		public WVec FlyStep(WAngle facing)
 		{
@@ -186,6 +189,8 @@ namespace OpenRA.Mods.RA2.Traits
 			if (!self.IsInWorld)
 				return;
 
+			// PERF: World.UpdateMaps() called on every position update. Expensive spatial index operation.
+			// With many missiles in flight, this becomes a significant bottleneck. Consider batching updates.
 			self.World.UpdateMaps(self, this);
 
 			var altitude = self.World.Map.DistanceAboveTerrain(CenterPosition);

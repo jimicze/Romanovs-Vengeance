@@ -29,13 +29,20 @@ namespace OpenRA.Mods.RA2.Traits
 	class MirageTooltip : ConditionalTrait<MirageTooltipInfo>, ITooltip
 	{
 		readonly Actor self;
-		readonly Mirage mirage;
+		Mirage mirage;
+		Player effectiveOwner;
 
 		public MirageTooltip(Actor self, MirageTooltipInfo info)
 			: base(info)
 		{
 			this.self = self;
+		}
+
+		protected override void Created(Actor self)
+		{
 			mirage = self.Trait<Mirage>();
+			effectiveOwner = self.World.Players.First(p => p.InternalName == mirage.Info.EffectiveOwner);
+			base.Created(self);
 		}
 
 		public ITooltipInfo TooltipInfo { get { return Info; } }
@@ -47,7 +54,7 @@ namespace OpenRA.Mods.RA2.Traits
 				if (!mirage.IsMirage || self.Owner.IsAlliedWith(self.World.RenderPlayer))
 					return self.Owner;
 
-				return self.World.Players.First(p => p.InternalName == mirage.Info.EffectiveOwner);
+				return effectiveOwner;
 			}
 		}
 	}
@@ -110,11 +117,12 @@ namespace OpenRA.Mods.RA2.Traits
 		CPos? lastPos;
 		bool wasMirage = false;
 		int mirageToken = Actor.InvalidConditionToken;
+		Player effectiveOwner;
 
 		public bool Disguised { get { return IsMirage; } }
 
 		public ActorInfo ActorType { get; }
-		public Player Owner { get { return IsMirage ? self.World.Players.First(p => p.InternalName == Info.EffectiveOwner) : null; } }
+		public Player Owner { get { return IsMirage ? effectiveOwner : null; } }
 
 		public Mirage(ActorInitializer init, MirageInfo info)
 			: base(info)
@@ -133,6 +141,8 @@ namespace OpenRA.Mods.RA2.Traits
 
 		protected override void Created(Actor self)
 		{
+			effectiveOwner = self.World.Players.First(p => p.InternalName == Info.EffectiveOwner);
+
 			if (IsMirage)
 			{
 				wasMirage = true;
