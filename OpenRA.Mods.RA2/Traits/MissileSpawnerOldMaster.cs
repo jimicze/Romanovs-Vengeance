@@ -88,7 +88,6 @@ namespace OpenRA.Mods.RA2.Traits
 				return;
 
 			// Issue retarget order for already launched ones
-			// PERF: Iterates all slave entries on every attack to retarget. O(n) where n = missile count.
 			foreach (var slave in SlaveEntries)
 				if (slave.IsValid)
 					slave.SpawnerSlave.Attack(slave.Actor, target);
@@ -106,7 +105,6 @@ namespace OpenRA.Mods.RA2.Traits
 			}
 
 			// Program the trajectory.
-			// PERF: Trait<BallisticMissileOld>() lookup on every attack. Consider caching trait reference.
 			var bm = se.Actor.Trait<BallisticMissileOld>();
 			bm.Target = Target.FromPos(target.CenterPosition);
 
@@ -162,7 +160,6 @@ namespace OpenRA.Mods.RA2.Traits
 
 				// If there's something left to spawn, restart the timer.
 				if (SelectEntryToSpawn(SlaveEntries) != null)
-					// PERF: LINQ .Select() in tick respawn logic. Evaluate reload modifiers only when needed.
 					respawnTicks = Util.ApplyPercentageModifiers(Info.RespawnTicks, reloadModifiers.Select(rm => rm.GetReloadModifier(MissileSpawnerOldMasterInfo.Name)));
 				}
 			}
