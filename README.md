@@ -82,6 +82,111 @@ make check-scripts
 launch-game.cmd
 ```
 
+## Testing Your Changes
+
+After building the mod, you can test your changes by running the game:
+
+```bash
+# 1. Build the mod
+make
+
+# 2. Launch the game
+./launch-game.sh
+```
+
+Then in-game:
+1. Start a **Skirmish** game
+2. Test the specific features you modified
+3. For performance testing, spawn units that use optimized systems (e.g., Dreadnoughts for missile optimizations)
+
+## Packaging / Creating Distributable Builds
+
+The packaging scripts create standalone installers that can be distributed to players.
+
+### Prerequisites by Platform
+
+| Platform | Additional Requirements |
+|----------|------------------------|
+| **macOS** | Xcode command line tools (`clang`) |
+| **Linux** | None (downloads AppImageTool automatically) |
+| **Windows** | `makensis` (NSIS), `wine64`, ImageMagick (`convert`) |
+
+### Building Packages
+
+All packaging scripts require a version tag and output directory:
+
+```bash
+# First, build the mod
+make
+
+# Create output directory
+mkdir -p ~/rv-packages
+```
+
+#### macOS (.dmg with .app bundle)
+
+Must be run on macOS:
+
+```bash
+./packaging/macos/buildpackage.sh <version-tag> <output-dir>
+
+# Example:
+./packaging/macos/buildpackage.sh playtest-20241229 ~/rv-packages
+```
+
+**Output**: `RomanovsVengeance-playtest-20241229.dmg`
+
+#### Linux (AppImage)
+
+Must be run on Linux:
+
+```bash
+./packaging/linux/buildpackage.sh <version-tag> <output-dir>
+
+# Example:
+./packaging/linux/buildpackage.sh playtest-20241229 ~/rv-packages
+```
+
+**Output**: `RomanovsVengeance-playtest-20241229-x86_64.AppImage`
+
+#### Windows (Installer .exe + Portable .zip)
+
+Must be run on Linux (uses Wine for cross-compilation):
+
+```bash
+./packaging/windows/buildpackage.sh <version-tag> <output-dir>
+
+# Example:
+./packaging/windows/buildpackage.sh playtest-20241229 ~/rv-packages
+```
+
+**Output**:
+- `RomanovsVengeance-playtest-20241229-x86.exe`
+- `RomanovsVengeance-playtest-20241229-x64.exe`
+- `RomanovsVengeance-playtest-20241229-x86-winportable.zip`
+- `RomanovsVengeance-playtest-20241229-x64-winportable.zip`
+
+#### All Platforms (Convenience Script)
+
+```bash
+./packaging/package-all.sh <version-tag> <output-dir>
+
+# Example:
+./packaging/package-all.sh playtest-20241229 ~/rv-packages
+```
+
+**Note**: On macOS, this only builds the macOS package. On Linux, it builds Linux and Windows packages.
+
+### Code Signing (macOS only)
+
+For notarized macOS builds, set these environment variables before running the packaging script:
+
+```bash
+export MACOS_DEVELOPER_IDENTITY="your-team-id"
+export MACOS_DEVELOPER_USERNAME="your-apple-id@example.com"
+export MACOS_DEVELOPER_PASSWORD="app-specific-password"
+```
+
 ## Project Structure
 
 ```
