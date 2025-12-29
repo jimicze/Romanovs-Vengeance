@@ -47,6 +47,7 @@ namespace OpenRA.Mods.RA2.Activities
 		WAngle GetEffectiveFacing()
 		{
 			var at = (float)ticks / (length - 1);
+			// PERF: Tan() trigonometric calculation every tick. Pre-compute bm.Info.LaunchAngle.Tan() in constructor.
 			var attitude = bm.Info.LaunchAngle.Tan() * (1 - 2 * at) / (4 * 1024);
 
 			var u = (facing.Angle % 512) / 512f;

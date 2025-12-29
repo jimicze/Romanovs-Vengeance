@@ -1,4 +1,4 @@
-﻿#region Copyright & License Information
+#region Copyright & License Information
 /*
  * Copyright 2015- OpenRA.Mods.AS Developers (see AUTHORS)
  * This file is a part of a third-party plugin for OpenRA, which is
@@ -43,6 +43,8 @@ namespace OpenRA.Mods.RA2.Warheads
 				if (!IsValidAgainst(victim, firedBy))
 					continue;
 
+				// PERF: LINQ chain (.Where/.Select/.MinByOrDefault) executed per victim on every weapon impact.
+				// Consider caching HitShape lookups or using a more direct iteration pattern.
 				var closestActiveShape = victim.TraitsImplementing<HitShape>()
 						.Where(Exts.IsTraitEnabled)
 						.Select(s => (s, s.DistanceFromEdge(victim, pos)))
@@ -58,6 +60,7 @@ namespace OpenRA.Mods.RA2.Warheads
 
 				if (MaxAffect > 0 && building != null)
 				{
+					// PERF: LINQ with OrderBy().Take() for buildings. Consider manual min-finding for hot path.
 					var affectedcells = building.OccupiedCells().Select(x => (pos - firedBy.World.Map.CenterOfCell(x.Item1)).Length)
 						.Where(x => x > Spread.Length).OrderBy(x => x).Take(MaxAffect);
 

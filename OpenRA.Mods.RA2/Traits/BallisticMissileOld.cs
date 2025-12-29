@@ -125,6 +125,8 @@ namespace OpenRA.Mods.RA2.Traits
 
 		void INotifyCreated.Created(Actor self)
 		{
+			// PERF: LINQ allocation on every missile creation - .ToArray().Select() creates new collections.
+			// Consider caching the ISpeedModifier[] array and computing speed once, invalidating on modifier change.
 			speedModifiers = self.TraitsImplementing<ISpeedModifier>().ToArray().Select(sm => sm.GetSpeedModifier());
 		}
 
@@ -143,6 +145,8 @@ namespace OpenRA.Mods.RA2.Traits
 			return NoCells;
 		}
 
+		// PERF: MovementSpeed recalculates modifiers on every access via Util.ApplyPercentageModifiers.
+		// Called multiple times per tick per missile (FlyStep, EstimatedMoveDuration). Cache this value.
 		public int MovementSpeed
 		{
 			get { return Util.ApplyPercentageModifiers(Info.Speed, speedModifiers); }
@@ -186,6 +190,8 @@ namespace OpenRA.Mods.RA2.Traits
 			if (!self.IsInWorld)
 				return;
 
+			// PERF: World.UpdateMaps() called on every position update. Expensive spatial index operation.
+			// With many missiles in flight, this becomes a significant bottleneck. Consider batching updates.
 			self.World.UpdateMaps(self, this);
 
 			var altitude = self.World.Map.DistanceAboveTerrain(CenterPosition);

@@ -47,6 +47,7 @@ namespace OpenRA.Mods.RA2.Traits
 				if (!mirage.IsMirage || self.Owner.IsAlliedWith(self.World.RenderPlayer))
 					return self.Owner;
 
+				// PERF: .First() linear search for player lookup on every property access. Cache player reference.
 				return self.World.Players.First(p => p.InternalName == mirage.Info.EffectiveOwner);
 			}
 		}
@@ -114,6 +115,7 @@ namespace OpenRA.Mods.RA2.Traits
 		public bool Disguised { get { return IsMirage; } }
 
 		public ActorInfo ActorType { get; }
+		// PERF: .First() linear search for player lookup. Cache this in a field and update when needed.
 		public Player Owner { get { return IsMirage ? self.World.Players.First(p => p.InternalName == Info.EffectiveOwner) : null; } }
 
 		public Mirage(ActorInitializer init, MirageInfo info)
