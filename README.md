@@ -8,7 +8,7 @@ Installing the mod is done the same way as another [OpenRAModSDK](http://www.git
 
 You can join our Discord server [here](https://discord.gg/SrvArjQ).
 
-You can also follow the developement on [our ModDB Page](https://www.moddb.com/mods/romanovs-vengeance).
+You can also follow the development on [our ModDB Page](https://www.moddb.com/mods/romanovs-vengeance).
 
 ## Forking with wiki, issues and pull requests
 
