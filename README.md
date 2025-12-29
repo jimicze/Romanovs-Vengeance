@@ -9,3 +9,28 @@ Installing the mod is done the same way as another [OpenRAModSDK](http://www.git
 You can join our Discord server [here](https://discord.gg/SrvArjQ).
 
 You can also follow the developement on [our ModDB Page](https://www.moddb.com/mods/romanovs-vengeance).
+
+## Forking with wiki, issues and pull requests
+
+The README and code are copied automatically when you fork. To keep the rest of the project metadata:
+
+- **Wiki:** clone the original wiki and push it to your fork.
+  ```
+  git clone https://github.com/MustaphaTR/Romanovs-Vengeance.wiki.git
+  cd Romanovs-Vengeance.wiki
+  git remote set-url origin https://github.com/<your-username>/Romanovs-Vengeance.wiki.git
+  git push --mirror
+  ```
+- **Issues:** GitHub does not copy issues on fork. With the GitHub CLI (`gh`) and `jq` you can export and recreate them:
+  ```
+  gh api repos/MustaphaTR/Romanovs-Vengeance/issues --paginate > issues.json
+  jq -c '.[] | {title, body, labels: [.labels[].name]}' issues.json | \
+    while read issue; do
+      gh issue create --repo <your-username>/Romanovs-Vengeance \
+        --title "$(echo "$issue" | jq -r .title)" \
+        --body "$(echo "$issue" | jq -r .body)" \
+        $(echo "$issue" | jq -r '.labels[]? | "--label \(.)"')
+    done
+  ```
+  Authors and timestamps cannot be preserved.
+- **Pull requests:** GitHub cannot transfer PRs to a fork. Keep the original repository as an `upstream` remote to reference old PRs, fetch the source branches, or ask contributors to reopen their PRs against your fork.
