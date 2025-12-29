@@ -72,7 +72,9 @@ namespace OpenRA.Mods.RA2.Traits
 		readonly Actor self;
 		public Target Target;
 
-		IEnumerable<int> speedModifiers;
+		// PERF: Cache speed modifier traits and computed speed to avoid recalculation every tick
+		ISpeedModifier[] speedModifierTraits;
+		int cachedMovementSpeed;
 
 		[Sync]
 		public WAngle Facing
@@ -125,9 +127,10 @@ namespace OpenRA.Mods.RA2.Traits
 
 		void INotifyCreated.Created(Actor self)
 		{
-			// PERF: LINQ allocation on every missile creation - .ToArray().Select() creates new collections.
-			// Consider caching the ISpeedModifier[] array and computing speed once, invalidating on modifier change.
-			speedModifiers = self.TraitsImplementing<ISpeedModifier>().ToArray().Select(sm => sm.GetSpeedModifier());
+			// PERF: Cache speed modifier traits array once, compute speed value upfront
+			// This avoids LINQ allocation and recalculation on every MovementSpeed access
+			speedModifierTraits = self.TraitsImplementing<ISpeedModifier>().ToArray();
+			cachedMovementSpeed = Util.ApplyPercentageModifiers(Info.Speed, speedModifierTraits.Select(sm => sm.GetSpeedModifier()));
 		}
 
 		void INotifyAddedToWorld.AddedToWorld(Actor self)
@@ -145,12 +148,8 @@ namespace OpenRA.Mods.RA2.Traits
 			return NoCells;
 		}
 
-		// PERF: MovementSpeed recalculates modifiers on every access via Util.ApplyPercentageModifiers.
-		// Called multiple times per tick per missile (FlyStep, EstimatedMoveDuration). Cache this value.
-		public int MovementSpeed
-		{
-			get { return Util.ApplyPercentageModifiers(Info.Speed, speedModifiers); }
-		}
+		// PERF: Return cached speed value instead of recalculating on every access
+		public int MovementSpeed => cachedMovementSpeed;
 
 		public WVec FlyStep(WAngle facing)
 		{

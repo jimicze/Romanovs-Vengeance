@@ -23,6 +23,7 @@ namespace OpenRA.Mods.RA2.Activities
 		readonly WPos targetPos;
 		readonly int length;
 		readonly WAngle facing;
+		readonly int launchAngleTan; // PERF: Pre-computed Tan() value
 		int ticks;
 
 		public BallisticMissileFlyOld(Actor self, Target t, BallisticMissileOld bm)
@@ -32,6 +33,7 @@ namespace OpenRA.Mods.RA2.Activities
 			targetPos = t.CenterPosition;
 			length = Math.Max((targetPos - initPos).Length / this.bm.Info.Speed, 1);
 			facing = (targetPos - initPos).Yaw;
+			launchAngleTan = bm.Info.LaunchAngle.Tan(); // PERF: Compute once instead of every tick
 		}
 
 		protected override void OnFirstRun(Actor self)
@@ -47,8 +49,8 @@ namespace OpenRA.Mods.RA2.Activities
 		WAngle GetEffectiveFacing()
 		{
 			var at = (float)ticks / (length - 1);
-			// PERF: Tan() trigonometric calculation every tick. Pre-compute bm.Info.LaunchAngle.Tan() in constructor.
-			var attitude = bm.Info.LaunchAngle.Tan() * (1 - 2 * at) / (4 * 1024);
+			// PERF: Use pre-computed launchAngleTan instead of calling Tan() every tick
+			var attitude = launchAngleTan * (1 - 2 * at) / (4 * 1024);
 
 			var u = (facing.Angle % 512) / 512f;
 			var scale = 2048 * u * (1 - u);
