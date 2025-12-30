@@ -548,7 +548,7 @@ int GetOwnedBuildableCount(string actorName)
 
 ### FIX: UnitOrderGenerator LINQ Allocations (LOW)
 
-**Status**: PENDING
+**Status**: FIXED (commit 7427bb8fca84793f744c1252a2b4f662383c3bb7)
 
 **File**: `engine/OpenRA.Mods.Common/Orders/UnitOrderGenerator.cs`
 
@@ -562,10 +562,10 @@ var orders = world.Selection.Actors
 var actorsInvolved = orders.Select(o => o.Actor).Distinct().ToArray();  // ALLOCATION
 ```
 
-**Proposed Fix**: Use pooled lists or manual iteration.
+**Fix Applied**: Added static reusable buffers (`OrdersBuffer`, `ActorsInvolvedSet`, `ActorsInvolvedBuffer`) and replaced LINQ chains with manual iteration in both `Order()` and `GetCursor()` methods.
 
 ---
 
 *Last Updated: 2025-12-30*
 *Implementation branch: perf/engine-fix (mod) / perf/rv-engine-fix (engine)*
-*Engine commit: 7d175a2ba3a6c12acbc01af5c55960c26fdcdea8*
+*Engine commit: 7427bb8fca84793f744c1252a2b4f662383c3bb7*
