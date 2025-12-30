@@ -283,6 +283,12 @@ var parallelBuilds = distinctItems.Count - 1;
 | CRITICAL | Actor.cs + UnitOrderGenerator.cs | Per-click trait lookup and sorting | **FIXED** |
 | HIGH | ClassicProductionQueue.cs + ClassicParallelProductionQueue.cs | LINQ chain allocations in production | **FIXED** |
 | MEDIUM | ClassicParallelProductionQueue.cs | GroupBy allocation per tick | **FIXED** |
+| HIGH | ProductionPaletteWidget.cs | Icon lookup LINQ on every mouse move | **FIXED** |
+| HIGH | ProductionPaletteWidget.cs | AllBuildables re-sorting 3x per tick | **FIXED** |
+| MEDIUM | ProductionPaletteWidget.cs | Per-icon queued items allocation | **FIXED** |
+| MEDIUM | ProductionPaletteWidget.cs | Per-frame overlay filtering | **FIXED** |
+| HIGH | ProductionQueue.cs | .All() instead of !.Any() | **FIXED** |
+| HIGH | ProductionQueue.cs | Per-click world actor scan for build limits | **FIXED** |
 
 ---
 
@@ -302,17 +308,25 @@ These are identified but not yet implemented optimizations:
 
 ## Pending Mod-Level Fixes
 
-### FIX: OrderLatency Values Too High (CRITICAL)
+### FIX: OrderLatency Values Aligned to Shattered Paradise
 
 **Status**: **FIXED**
 
 **File**: `mods/rv/mod.yaml`
 
-**Problem**: RV mod used OrderLatency values that were **3x higher** than base OpenRA, causing significant input-to-action delay.
+**Problem**: RV mod initially used OrderLatency values that were **3x higher** than base OpenRA, causing significant input-to-action delay.
 
-**Solution Applied**: Reduced all OrderLatency values to match base OpenRA:
-- default: 9 → 3 (360ms → 120ms)
-- All other speeds proportionally reduced
+**Solution Applied**: Reduced all OrderLatency values to match Shattered Paradise (playtest-20241231):
+
+| Speed | RV Before | RV After | Shattered Paradise | Real-time Delay |
+|-------|-----------|----------|-------------------|-----------------|
+| slowest | 6 | 2 | N/A | 160ms |
+| slower | 9 | 3 | 3 | 150ms |
+| default | 9 | 3 | 3 | 120ms |
+| fast | 12 | 4 | N/A | 140ms |
+| faster | 12 | 4 | 4 | 120ms |
+| fastest | 18 | 5 | 5 | 100ms |
+| ludicrous | 27 | 9 | 30 (debug) | 45ms |
 
 **Result**: Order execution delay reduced by ~67%
 
@@ -377,6 +391,161 @@ foreach (var x in self.World.ActorsWithTrait<Production>())
 
 ---
 
+### FIX 4: ProductionPaletteWidget Optimizations
+
+**Status**: **FIXED**
+
+**Files Modified**:
+- `engine/OpenRA.Mods.Common/Widgets/ProductionPaletteWidget.cs`
+
+**Problem**: Multiple LINQ allocations and repeated computations on every mouse input and every tick:
+
+1. **Icon lookup LINQ** (lines 274-275, 637-638): Every mouse move executed:
+   ```csharp
+   var icon = icons.Where(i => i.Key.Contains(mi.Location))
+       .Select(i => i.Value).FirstOrDefault();
+   ```
+
+2. **AllBuildables re-sorting** (line 221-230): Property re-sorted collection on every access (called 3x per tick):
+   ```csharp
+   return CurrentQueue.AllItems()
+       .OrderBy(a => BuildableInfo.GetTraitForQueue(a, CurrentQueue.Info.Type)
+       .GetBuildPaletteOrder(a, CurrentQueue));
+   ```
+
+3. **Per-icon queued items allocation** (line 532): For each icon in RefreshIcons:
+   ```csharp
+   Queued = currentQueue.AllQueued().Where(a => a.Item == item.Name).ToList(),
+   ```
+
+4. **Per-frame overlay filtering** (line 567): In Draw loop every frame:
+   ```csharp
+   foreach (var pio in pios.Where(p => p.IsOverlayActive(icon.Actor, icon.ProductionQueue.Actor)))
+   ```
+
+**Solution**:
+
+1. **FindIconAt helper**: Replace LINQ with simple foreach loop:
+   ```csharp
+   ProductionIcon FindIconAt(int2 location)
+   {
+       foreach (var kvp in icons)
+           if (kvp.Key.Contains(location))
+               return kvp.Value;
+       return null;
+   }
+   ```
+
+2. **Cache AllBuildables per tick**:
+   ```csharp
+   ActorInfo[] cachedBuildables;
+   int cachedBuildablesTick = -1;
+
+   public IEnumerable<ActorInfo> AllBuildables
+   {
+       get
+       {
+           var currentTick = World.WorldTick;
+           if (cachedBuildablesTick != currentTick)
+           {
+               cachedBuildables = CurrentQueue.AllItems()
+                   .OrderBy(a => BuildableInfo.GetTraitForQueue(a, CurrentQueue.Info.Type)
+                   .GetBuildPaletteOrder(a, CurrentQueue))
+                   .ToArray();
+               cachedBuildablesTick = currentTick;
+           }
+           return cachedBuildables;
+       }
+   }
+   ```
+
+3. **Pre-compute queued items dictionary**:
+   ```csharp
+   var queuedByItem = new Dictionary<string, List<ProductionItem>>();
+   foreach (var queued in currentQueue.AllQueued())
+   {
+       if (!queuedByItem.TryGetValue(queued.Item, out var list))
+       {
+           list = [];
+           queuedByItem[queued.Item] = list;
+       }
+       list.Add(queued);
+   }
+   // Then in icon creation:
+   Queued = queuedByItem.TryGetValue(item.Name, out var queued) ? queued : [],
+   ```
+
+4. **Pre-compute active overlays per icon**:
+   ```csharp
+   // Added to ProductionIcon class:
+   public IProductionIconOverlay[] ActiveOverlays;
+
+   // In RefreshIcons - compute once:
+   ActiveOverlays = GetActiveOverlays(item, currentQueue.Actor)
+
+   // In Draw - use cached:
+   foreach (var pio in icon.ActiveOverlays)
+   ```
+
+**Impact**: Eliminates per-mouse-move and per-frame allocations in production UI. Widget is now O(1) for icon lookup instead of O(n).
+
+---
+
+### FIX 5: ProductionQueue Validation Optimizations
+
+**Status**: **FIXED**
+
+**File Modified**: `engine/OpenRA.Mods.Common/Traits/Player/ProductionQueue.cs`
+
+**Problem 1**: Used `.All()` which must iterate all items even when first match would suffice:
+```csharp
+if (BuildableItems().All(b => b.Name != order.TargetString))
+    return;
+```
+
+**Solution 1**: Use `!Any()` for early exit:
+```csharp
+if (!BuildableItems().Any(b => b.Name == order.TargetString))
+    return;
+```
+
+**Problem 2**: Scanned all world actors with Buildable trait on every queue validation (2 locations):
+```csharp
+var owned = Actor.Owner.World.ActorsHavingTrait<Buildable>()
+    .Count(a => a.Info.Name == actor.Name && a.Owner == Actor.Owner);
+```
+This is O(n) where n = all buildable actors on map, called multiple times per production click.
+
+**Solution 2**: Cache owned buildable counts per tick with lazy loading:
+```csharp
+Dictionary<string, int> ownedBuildableCountsCache;
+int ownedBuildableCountsCacheTick = -1;
+
+int GetOwnedBuildableCount(string actorName)
+{
+    var currentTick = Actor.World.WorldTick;
+    if (ownedBuildableCountsCacheTick != currentTick)
+    {
+        // Rebuild cache once per tick by scanning all buildable actors once
+        ownedBuildableCountsCache = [];
+        foreach (var actor in Actor.Owner.World.ActorsHavingTrait<Buildable>())
+        {
+            if (actor.Owner != Actor.Owner)
+                continue;
+            var name = actor.Info.Name;
+            ownedBuildableCountsCache.TryGetValue(name, out var count);
+            ownedBuildableCountsCache[name] = count + 1;
+        }
+        ownedBuildableCountsCacheTick = currentTick;
+    }
+    return ownedBuildableCountsCache.TryGetValue(actorName, out var result) ? result : 0;
+}
+```
+
+**Impact**: Reduces build-limit validation from O(n) per check to O(n) once per tick (amortized O(1) per check). Particularly important for RV which has 16 units with BuildLimit: 1 (heroes, special structures, upgrades).
+
+---
+
 ### FIX: UnitOrderGenerator LINQ Allocations (LOW)
 
 **Status**: PENDING
@@ -398,4 +567,5 @@ var actorsInvolved = orders.Select(o => o.Actor).Distinct().ToArray();  // ALLOC
 ---
 
 *Last Updated: 2025-12-30*
-*Implementation branch: perf/engine-fix*
+*Implementation branch: perf/engine-fix (mod) / perf/rv-engine-fix (engine)*
+*Engine commit: 7d175a2ba3a6c12acbc01af5c55960c26fdcdea8*

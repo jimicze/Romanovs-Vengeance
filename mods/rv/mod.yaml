@@ -404,7 +404,7 @@ GameSpeeds:
 		fastest:
 			Name: options-game-speed.fastest
 			Timestep: 20
-			OrderLatency: 6
+			OrderLatency: 5
 		ludicrous:
 			Name: options-game-speed.ludicrous
 			Timestep: 5
