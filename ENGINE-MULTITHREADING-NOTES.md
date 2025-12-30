@@ -303,51 +303,17 @@ These are identified but not yet implemented optimizations:
 
 ### FIX: OrderLatency Values Too High (CRITICAL)
 
-**Status**: PENDING
+**Status**: **FIXED**
 
 **File**: `mods/rv/mod.yaml`
 
-**Problem**: RV mod uses OrderLatency values that are **3x higher** than base OpenRA, causing significant input-to-action delay.
+**Problem**: RV mod used OrderLatency values that were **3x higher** than base OpenRA, causing significant input-to-action delay.
 
-| Speed | RV OrderLatency | Base RA OrderLatency | Delay at RV |
-|-------|-----------------|----------------------|-------------|
-| slowest | 6 | 2 | 480ms |
-| slower | 9 | 3 | 450ms |
-| **default** | **9** | **3** | **360ms** |
-| fast | 12 | 4 | 420ms |
-| faster | 12 | 4 | 360ms |
-| fastest | 18 | 6 | 360ms |
+**Solution Applied**: Reduced all OrderLatency values to match base OpenRA:
+- default: 9 → 3 (360ms → 120ms)
+- All other speeds proportionally reduced
 
-**How OrderLatency works**: Orders are projected forward by this many frames before execution. At default speed (40ms/frame), OrderLatency=9 means orders execute 360ms after being issued. Combined with NetFrameInterval=3, actual delay can be 360-480ms per order.
-
-**Symptoms**: 
-- Mouse cursor now responds immediately (fixed)
-- Move/attack command effect shows on map immediately (fixed)
-- BUT unit actually starts moving/attacking with 1-2 second delay
-
-**Proposed Fix**: Reduce OrderLatency values to match base OpenRA:
-```yaml
-GameSpeeds:
-	Speeds:
-		slowest:
-			OrderLatency: 2  # was 6
-		slower:
-			OrderLatency: 3  # was 9
-		default:
-			OrderLatency: 3  # was 9
-		fast:
-			OrderLatency: 4  # was 12
-		faster:
-			OrderLatency: 4  # was 12
-		fastest:
-			OrderLatency: 6  # was 18
-		ludicrous:
-			OrderLatency: 9  # was 27
-```
-
-**Risk**: Lower OrderLatency may cause sync issues in multiplayer if network latency is high. May need testing with real multiplayer games.
-
-**Estimated Impact**: HIGH - should reduce order execution delay by ~67%
+**Result**: Order execution delay reduced by ~67%
 
 ---
 
