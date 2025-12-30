@@ -384,31 +384,31 @@ GameSpeeds:
 		slowest:
 			Name: options-game-speed.slowest
 			Timestep: 80
-			OrderLatency: 6
+			OrderLatency: 2
 		slower:
 			Name: options-game-speed.slower
 			Timestep: 50
-			OrderLatency: 9
+			OrderLatency: 3
 		default:
 			Name: options-game-speed.normal
 			Timestep: 40
-			OrderLatency: 9
+			OrderLatency: 3
 		fast:
 			Name: options-game-speed.fast
 			Timestep: 35
-			OrderLatency: 12
+			OrderLatency: 4
 		faster:
 			Name: options-game-speed.faster
 			Timestep: 30
-			OrderLatency: 12
+			OrderLatency: 4
 		fastest:
 			Name: options-game-speed.fastest
 			Timestep: 20
-			OrderLatency: 18
+			OrderLatency: 6
 		ludicrous:
 			Name: options-game-speed.ludicrous
 			Timestep: 5
-			OrderLatency: 27
+			OrderLatency: 9
 
 DiscordService:
 	ApplicationId: 734703512952242257
