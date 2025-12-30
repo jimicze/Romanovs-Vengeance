@@ -210,6 +210,10 @@ This fork includes performance optimization work targeting input lag issues obse
 - [ROMANOVS-LAG-INVESTIGATION.md](ROMANOVS-LAG-INVESTIGATION.md) - Root cause analysis and code-level performance hotspots
 - [ENGINE-MULTITHREADING-NOTES.md](ENGINE-MULTITHREADING-NOTES.md) - Engine-level multi-threading considerations
 
+## Known Bugs
+
+See [../bugs.md](../bugs.md) for documented bugs with root cause analysis and proposed fixes (non-performance related).
+
 ### Optimizations Implemented
 
 | Component | Optimization |
