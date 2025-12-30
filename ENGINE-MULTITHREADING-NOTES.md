@@ -281,6 +281,7 @@ var parallelBuilds = distinctItems.Count - 1;
 | Priority | File | Issue | Status |
 |----------|------|-------|--------|
 | CRITICAL | Actor.cs + UnitOrderGenerator.cs | Per-click trait lookup and sorting | **FIXED** |
+| HIGH | ClassicProductionQueue.cs + ClassicParallelProductionQueue.cs | LINQ chain allocations in production | **FIXED** |
 | MEDIUM | ClassicParallelProductionQueue.cs | GroupBy allocation per tick | **FIXED** |
 
 ---
@@ -317,17 +318,62 @@ These are identified but not yet implemented optimizations:
 
 ---
 
-### FIX: Production Queue LINQ Allocations (MEDIUM)
+### FIX 3: Production Queue LINQ Chain Elimination
 
-**Status**: PENDING
+**Status**: **FIXED**
 
-**Files**:
+**Files Modified**:
 - `engine/OpenRA.Mods.Common/Traits/Player/ClassicProductionQueue.cs`
-- `engine/OpenRA.Mods.Common/Widgets/ProductionPaletteWidget.cs`
+- `engine/OpenRA.Mods.Common/Traits/Player/ClassicParallelProductionQueue.cs`
 
-**Problem**: `ActorsWithTrait<Production>()` called every tick with LINQ chains.
+**Problem**: LINQ chains in production queues caused significant allocations:
+```csharp
+// MostLikelyProducer() - called frequently
+var productionActor = self.World.ActorsWithTrait<Production>()
+    .Where(x => x.Actor.Owner == self.Owner && !x.Trait.IsTraitDisabled && ...)
+    .OrderBy(x => x.Trait.IsTraitPaused)
+    .ThenByDescending(x => x.Actor.IsPrimaryBuilding())
+    .ThenByDescending(x => x.Actor.ActorID)
+    .FirstOrDefault();
 
-**Proposed Fix**: Cache production actors per-player, update on actor add/remove.
+// GetBuildTime() - .Count() with predicate
+var count = self.World.ActorsWithTrait<Production>()
+    .Count(p => !p.Trait.IsTraitDisabled && !p.Trait.IsTraitPaused && ...);
+```
+Each LINQ chain allocates enumerator objects and intermediate collections.
+
+**Solution**: Replace all LINQ chains with single-pass manual iteration:
+```csharp
+// MostLikelyProducer() - find best in single pass
+TraitPair<Production> best = default;
+var bestIsPaused = true;
+var bestIsPrimary = false;
+var bestActorId = 0u;
+var found = false;
+
+foreach (var x in self.World.ActorsWithTrait<Production>())
+{
+    if (x.Actor.Owner != self.Owner || x.Trait.IsTraitDisabled || ...)
+        continue;
+
+    var isPaused = x.Trait.IsTraitPaused;
+    var isPrimary = x.Actor.IsPrimaryBuilding();
+    var actorId = x.Actor.ActorID;
+
+    // Compare: prefer not paused, then primary, then higher actor ID
+    var isBetter = !found ||
+        (isPaused != bestIsPaused && !isPaused) ||
+        (isPaused == bestIsPaused && isPrimary != bestIsPrimary && isPrimary) ||
+        (isPaused == bestIsPaused && isPrimary == bestIsPrimary && actorId > bestActorId);
+
+    if (isBetter) { best = x; bestIsPaused = isPaused; ... }
+}
+```
+
+**Impact**: Eliminates all LINQ allocations in production queue hot paths. Methods optimized:
+- `MostLikelyProducer()` - both queues
+- `BuildUnit()` - both queues
+- `GetBuildTime()` - both queues
 
 ---
 
