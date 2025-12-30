@@ -299,5 +299,91 @@ These are identified but not yet implemented optimizations:
 
 ---
 
+## Pending Mod-Level Fixes
+
+### FIX: OrderLatency Values Too High (CRITICAL)
+
+**Status**: PENDING
+
+**File**: `mods/rv/mod.yaml`
+
+**Problem**: RV mod uses OrderLatency values that are **3x higher** than base OpenRA, causing significant input-to-action delay.
+
+| Speed | RV OrderLatency | Base RA OrderLatency | Delay at RV |
+|-------|-----------------|----------------------|-------------|
+| slowest | 6 | 2 | 480ms |
+| slower | 9 | 3 | 450ms |
+| **default** | **9** | **3** | **360ms** |
+| fast | 12 | 4 | 420ms |
+| faster | 12 | 4 | 360ms |
+| fastest | 18 | 6 | 360ms |
+
+**How OrderLatency works**: Orders are projected forward by this many frames before execution. At default speed (40ms/frame), OrderLatency=9 means orders execute 360ms after being issued. Combined with NetFrameInterval=3, actual delay can be 360-480ms per order.
+
+**Symptoms**: 
+- Mouse cursor now responds immediately (fixed)
+- Move/attack command effect shows on map immediately (fixed)
+- BUT unit actually starts moving/attacking with 1-2 second delay
+
+**Proposed Fix**: Reduce OrderLatency values to match base OpenRA:
+```yaml
+GameSpeeds:
+	Speeds:
+		slowest:
+			OrderLatency: 2  # was 6
+		slower:
+			OrderLatency: 3  # was 9
+		default:
+			OrderLatency: 3  # was 9
+		fast:
+			OrderLatency: 4  # was 12
+		faster:
+			OrderLatency: 4  # was 12
+		fastest:
+			OrderLatency: 6  # was 18
+		ludicrous:
+			OrderLatency: 9  # was 27
+```
+
+**Risk**: Lower OrderLatency may cause sync issues in multiplayer if network latency is high. May need testing with real multiplayer games.
+
+**Estimated Impact**: HIGH - should reduce order execution delay by ~67%
+
+---
+
+### FIX: Production Queue LINQ Allocations (MEDIUM)
+
+**Status**: PENDING
+
+**Files**:
+- `engine/OpenRA.Mods.Common/Traits/Player/ClassicProductionQueue.cs`
+- `engine/OpenRA.Mods.Common/Widgets/ProductionPaletteWidget.cs`
+
+**Problem**: `ActorsWithTrait<Production>()` called every tick with LINQ chains.
+
+**Proposed Fix**: Cache production actors per-player, update on actor add/remove.
+
+---
+
+### FIX: UnitOrderGenerator LINQ Allocations (LOW)
+
+**Status**: PENDING
+
+**File**: `engine/OpenRA.Mods.Common/Orders/UnitOrderGenerator.cs`
+
+**Problem**: Lines 48-53 use `.ToList()` and `.ToArray()` on every click:
+```csharp
+var orders = world.Selection.Actors
+    .Select(a => OrderForUnit(a, target, cell, mi))
+    .Where(o => o != null)
+    .ToList();  // ALLOCATION
+
+var actorsInvolved = orders.Select(o => o.Actor).Distinct().ToArray();  // ALLOCATION
+```
+
+**Proposed Fix**: Use pooled lists or manual iteration.
+
+---
+
 *Last Updated: 2025-12-30*
 *Implementation branch: perf/engine-fix*
