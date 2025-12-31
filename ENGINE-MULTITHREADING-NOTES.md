@@ -566,6 +566,308 @@ var actorsInvolved = orders.Select(o => o.Actor).Distinct().ToArray();  // ALLOC
 
 ---
 
+---
+
+## Architectural Analysis: Async/Await and .NET 9
+
+### Async/Await Refactoring
+
+**Status**: NOT RECOMMENDED for OpenRA game logic
+
+**Analysis Date**: 2025-12-30
+
+#### Why Async Won't Help Game Logic
+
+OpenRA uses a **lockstep networking model** for multiplayer synchronization. This architecture has fundamental constraints that make async/await unsuitable for core game logic:
+
+1. **Determinism Requirement**: All clients must execute identical game logic in the same order to produce identical game states. Async/await introduces non-determinism because:
+   - Task scheduling varies by machine load and CPU
+   - Task completion order is not guaranteed
+   - Different machines would process async operations in different orders
+
+2. **Atomic Tick Execution**: Each game tick must complete atomically before network synchronization. Async operations that span multiple ticks would break this model.
+
+3. **Thread Safety**: Game state (actors, traits, world) is not thread-safe. Async operations running concurrently with the game loop could cause race conditions and data corruption.
+
+#### Where Async Could Theoretically Help
+
+These areas are already partially async or could benefit, but are NOT in the hot path:
+
+| Area | Current State | Async Benefit | Priority |
+|------|--------------|---------------|----------|
+| Asset Loading | Content pipelines already async-ish | Minor | Low |
+| Network I/O | Non-blocking sockets | Already optimal | N/A |
+| Audio Loading | Separate thread | Already optimal | N/A |
+| Mod Content Loading | Sequential | Could speed up initial load | Low |
+
+#### Conclusion
+
+The performance improvements we achieved through LINQ elimination and caching are the correct approach for OpenRA. Async refactoring would:
+- Break multiplayer determinism
+- Require massive architectural changes
+- Not address the actual bottlenecks (per-tick allocations, LINQ overhead)
+
+**Recommendation**: Do not pursue async/await refactoring for game logic.
+
+---
+
+### .NET 9 Upgrade Analysis
+
+**Status**: DEFERRED - Requires upstream coordination
+
+**Analysis Date**: 2025-12-30
+
+#### Current State
+
+OpenRA (and MustaphaTR/OpenRA fork) uses **.NET 6.0**.
+
+#### Potential Benefits of .NET 9
+
+| Feature | Benefit | Impact Estimate |
+|---------|---------|-----------------|
+| JIT Improvements | 10-15% general performance | Medium |
+| GC Improvements | Reduced pause times, better throughput | Medium |
+| `FrozenDictionary<K,V>` | Immutable dictionary with faster lookups | Medium for trait caches |
+| `FrozenSet<T>` | Immutable set with O(1) lookups | Medium for prerequisite checks |
+| `SearchValues<T>` | SIMD-optimized searching | Low |
+| Native AOT | Faster startup, smaller binaries | Low (not critical for games) |
+| `Span<T>` improvements | Less allocation in string/buffer operations | Low-Medium |
+
+#### Challenges
+
+1. **Upstream Dependency**: MustaphaTR/OpenRA (AS fork) and OpenRA/OpenRA would need to upgrade first. A mod fork upgrading independently would:
+   - Diverge significantly from upstream
+   - Make merging upstream changes difficult
+   - Create maintenance burden
+
+2. **Platform Compatibility**: Must verify:
+   - macOS 10.15+ (already minimum)
+   - Linux distributions (older distros may lack .NET 9 runtime)
+   - Windows (generally fine)
+
+3. **Third-Party Libraries**: NuGet packages must support .NET 9:
+   - FreeType bindings
+   - OpenAL bindings
+   - SDL2 bindings
+
+4. **Testing Burden**: Full regression testing across all platforms required.
+
+5. **Marginal Gains**: The performance gains from .NET 9 (~10-15%) are smaller than what we achieved through algorithmic improvements (LINQ elimination gave 60-80% reduction in specific hot paths).
+
+#### Conclusion
+
+.NET 9 upgrade should be:
+1. Coordinated with upstream OpenRA/MustaphaTR
+2. Done as a separate effort, not mixed with gameplay fixes
+3. Considered lower priority than algorithmic optimizations
+
+**Recommendation**: Wait for upstream to upgrade. Focus on algorithmic optimizations which provide larger, measurable improvements.
+
+---
+
+## Implemented Performance Fixes - Batch 2
+
+These optimizations target unit movement responsiveness, production UI, selection handling, and control groups.
+
+### Overview
+
+| # | File | Issue | Impact | Status |
+|---|------|-------|--------|--------|
+| 1 | ParallelProductionQueue.cs | `GroupBy().ToList().Count` + LINQ | HIGH | **FIXED** |
+| 2 | Move.cs:124 | `path.TakeWhile().ToList()` per path eval | MEDIUM | **FIXED** |
+| 3 | Move.cs:279-281 | LINQ `.Select().Any()` in PopPath | MEDIUM | **FIXED** |
+| 4 | ProductionQueueFromSelection.cs:50-63 | LINQ + TraitsImplementing on every selection | MEDIUM | **FIXED** |
+| 5 | SelectableExts.cs:92-98 | `GroupBy().OrderByDescending()` for box select | MEDIUM | **FIXED** |
+| 6 | ControlGroups.cs:100 | `List.Contains()` O(n) lookups | LOW | **FIXED** |
+
+---
+
+### FIX B2-1: ParallelProductionQueue LINQ Elimination
+
+**File**: `engine/OpenRA.Mods.Common/Traits/Player/ParallelProductionQueue.cs`
+
+**Problem**: Multiple LINQ operations including `GroupBy().ToList().Count` pattern:
+```csharp
+// Line 30 - FirstOrDefault in tick
+var item = Queue.FirstOrDefault(i => !i.Paused);
+
+// Line 41 - FindAll creates new list
+foreach (var other in Queue.FindAll(a => a.Item == item.Item))
+
+// Line 61 - Where in PauseProduction
+foreach (var item in Queue.Where(a => a.Item == itemName))
+
+// Lines 67-70 - Heavy allocation pattern
+var parallelBuilds = Queue.FindAll(i => !i.Paused && !i.Done)
+    .GroupBy(i => i.Item)
+    .ToList()
+    .Count;
+```
+
+**Solution**: Replace all LINQ with manual loops:
+- `FirstOrDefault` → manual loop with early exit
+- `FindAll` → collect to temp list, then modify
+- `Where` → manual foreach
+- `GroupBy().ToList().Count` → HashSet for distinct counting
+
+**Impact**: Eliminates all per-tick LINQ allocations in ParallelProductionQueue.
+
+---
+
+### FIX B2-2: Move.cs TakeWhile Elimination
+
+**File**: `engine/OpenRA.Mods.Common/Activities/Move/Move.cs`
+
+**Location**: Line 124
+
+**Problem**:
+```csharp
+path = path.TakeWhile(a => a != mobile.ToCell).ToList();
+```
+Creates new List allocation every time path is evaluated.
+
+**Solution**: Modify path in-place using IndexOf + RemoveRange:
+```csharp
+var toCellIndex = path.IndexOf(mobile.ToCell);
+if (toCellIndex >= 0)
+    path.RemoveRange(toCellIndex, path.Count - toCellIndex);
+```
+
+**Impact**: Eliminates list allocation per path evaluation.
+
+---
+
+### FIX B2-3: Move.cs PopPath LINQ Elimination
+
+**File**: `engine/OpenRA.Mods.Common/Activities/Move/Move.cs`
+
+**Location**: Lines 279-281
+
+**Problem**:
+```csharp
+var nudgeOrRepath = CVec.Directions
+    .Select(d => nextCell + d)
+    .Any(c => c != self.Location && ...);
+```
+LINQ chain in frequently called movement tick path.
+
+**Solution**: Manual loop with early exit:
+```csharp
+var nudgeOrRepath = false;
+foreach (var d in CVec.Directions)
+{
+    var c = nextCell + d;
+    if (c != self.Location && ...)
+    {
+        nudgeOrRepath = true;
+        break;
+    }
+}
+```
+
+**Impact**: Eliminates iterator allocation in movement hot path.
+
+---
+
+### FIX B2-4: ProductionQueueFromSelection Optimization
+
+**File**: `engine/OpenRA.Mods.Common/Traits/ProductionQueueFromSelection.cs`
+
+**Location**: Lines 50-63
+
+**Problem**: Multiple LINQ chains with TraitsImplementing calls on every selection change.
+
+**Solution**: Manual iteration with early exit + HashSet for production types:
+- First loop: Find enabled ProductionQueue on selected actors (break on first find)
+- Second loop (if needed): Collect production types into HashSet
+- Third loop: Find matching player queue with O(1) type lookup
+
+**Impact**: Reduces selection change overhead, especially with many selected actors.
+
+---
+
+### FIX B2-5: SelectableExts Box Selection Optimization
+
+**File**: `engine/OpenRA.Game/SelectableExts.cs`
+
+**Location**: Lines 92-98
+
+**Problem**:
+```csharp
+return actors.GroupBy(x => x.SelectionPriority(modifiers))
+    .OrderByDescending(g => g.Key)
+    .Select(g => g.AsEnumerable())
+    .DefaultIfEmpty(NoActors)
+    .FirstOrDefault();
+```
+GroupBy + OrderByDescending allocates IGrouping objects during box selection.
+
+**Solution**: Two-pass approach with priority caching:
+- Pass 1: Collect (actor, priority) tuples, track max priority
+- Pass 2: Filter actors with max priority from cached values
+
+**Trade-off**: Allocates list of tuples, but avoids GroupBy/OrderBy allocations and double `SelectionPriority()` calls. Net win for typical selections.
+
+**Impact**: Reduces box selection overhead for large groups.
+
+---
+
+### FIX B2-6: ControlGroups HashSet Optimization
+
+**File**: `engine/OpenRA.Mods.Common/Traits/World/ControlGroups.cs`
+
+**Location**: Line 100
+
+**Problem**:
+```csharp
+controlGroups[i].RemoveAll(a => actors.Contains(a));
+```
+If `actors` is IEnumerable (not HashSet), Contains is O(n) making total O(n*m).
+
+**Solution**: Convert to HashSet before iteration:
+```csharp
+var actorSet = actors as HashSet<Actor> ?? actors.ToHashSet();
+```
+
+**Impact**: Reduces control group operations from O(n*m) to O(n+m).
+
+---
+
 *Last Updated: 2025-12-30*
 *Implementation branch: perf/engine-fix (mod) / perf/rv-engine-fix (engine)*
-*Engine commit: 7427bb8fca84793f744c1252a2b4f662383c3bb7*
+*Engine commit: 652c245688953bc54d319a09d4bd21ce9aa7d088 (batch 2 fixes)*
+
+---
+
+## Playtest Testing Protocol
+
+Use this checklist when testing new playtest builds to verify performance fixes.
+
+### 1. Unit Movement Responsiveness
+- [ ] Select 50+ units, issue rapid move commands
+- [ ] Check for input lag between click and unit response
+- [ ] Compare to previous version if possible
+
+### 2. Production Queue
+- [ ] Rapid clicking in production sidebar
+- [ ] Switch between production tabs quickly
+- [ ] Queue multiple units rapidly
+
+### 3. Box Selection
+- [ ] Draw box around large groups (50+ units)
+- [ ] Verify selection is snappy, no delay
+
+### 4. Control Groups
+- [ ] Assign control groups (Ctrl+1, Ctrl+2, etc.)
+- [ ] Recall control groups (1, 2, etc.)
+- [ ] Verify no lag when using control groups
+
+### 5. MCV Deploy/Undeploy (Regression Test)
+- [ ] Build MCV, deploy it
+- [ ] Switch production tabs while MCV exists
+- [ ] Undeploy and redeploy - verify no crash
+
+### 6. General Gameplay
+- [ ] Start a skirmish, play for a few minutes
+- [ ] No crashes or visual glitches
+- [ ] Frame rate stable during large battles
