@@ -839,6 +839,70 @@ var actorSet = actors as HashSet<Actor> ?? actors.ToHashSet();
 
 ---
 
+## AI Bug Fixes
+
+### FIX: AI Water Building Placement Intelligence
+
+**Status**: IMPLEMENTED
+
+**Branch**: `feature/ai-water-building-placement`
+
+**File Modified**: `engine/OpenRA.Mods.Common/Traits/BotModules/BotModuleLogic/BaseBuilderQueueManager.cs`
+
+**Problem**: In RV mod, many buildings inherit `SecondaryTerrainTypes: Water` from `^BaseBuilding`, allowing them to be placed on water. However, some buildings (Barracks, War Factory) explicitly remove this with `-SecondaryTerrainTypes:`, making them land-only.
+
+The AI didn't know which buildings could be placed on water. When searching for placement:
+1. AI would search all cells (land + water) for every building
+2. For land-only buildings (Barracks), AI would try water cells, fail, and cancel production
+3. With limited land space, AI would get stuck in a loop of trying and failing
+4. Production queue became blocked
+
+**Buildings that CAN be placed on water** (have `SecondaryTerrainTypes: Water`):
+- Power Plants, Radars, Battle Labs, Ore Silos, Service Depots, Helipads/Airfields
+- Most defense structures
+- Various civilian/special structures
+
+**Buildings that CANNOT be placed on water** (have `-SecondaryTerrainTypes:`):
+- Barracks (`^Barracks` template)
+- War Factory (`^WarFactory` template)  
+- Shipyard (`^Shipyard` - uses `TerrainTypes: Water` instead, water ONLY)
+- Cloning Vats, Bunkers, Tesla Fence Posts, etc.
+
+**Solution**: In `FindPos()` method, filter cells based on building's terrain placement capabilities:
+
+```csharp
+var cells = world.Map.FindTilesInAnnulus(center, minRange, maxRange);
+
+// Filter cells based on building's terrain placement capabilities.
+// If building can be placed on water (has water in SecondaryTerrainTypes),
+// search all cells (land or water). Otherwise, only search cells matching
+// the building's primary TerrainTypes.
+var canPlaceOnWater = bi.SecondaryTerrainTypes.Overlaps(baseBuilder.Info.WaterTerrainTypes);
+if (!canPlaceOnWater)
+{
+    cells = cells.Where(c => bi.TerrainTypes.Contains(world.Map.GetTerrainInfo(c).Type));
+    AIUtils.BotDebug("{0}: Building {1} cannot be placed on water, filtering to land cells only", player, actorType);
+}
+```
+
+**Logic**:
+| Building | SecondaryTerrainTypes | AI Behavior |
+|----------|----------------------|-------------|
+| Power Plant | Water | Searches land or water, can place on either |
+| Radar | Water | Searches land or water, can place on either |
+| Barracks | (empty) | Searches land only, cancels if no land available |
+| War Factory | (empty) | Searches land only, cancels if no land available |
+| Shipyard | (empty), TerrainTypes: Water | Searches water only (correct) |
+
+**Impact**: 
+- AI no longer wastes attempts trying to place land-only buildings on water
+- AI can still place water-capable buildings on water when land is full
+- Production queue no longer gets stuck due to impossible placements
+
+**Future Performance Note**: The `.Where()` filter adds minor overhead. Could be optimized by pre-computing valid cells or caching terrain type lookups if this becomes a bottleneck in large games.
+
+---
+
 ## Playtest Testing Protocol
 
 Use this checklist when testing new playtest builds to verify performance fixes.
