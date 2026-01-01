@@ -3494,6 +3494,11 @@ progressbar-thumb:
 	Image: dialog.png
 	PanelRegion: 512, 0, 1, 1, 126, 126, 1, 1
 
+# Empty health bar (for HealthBarWidget)
+progressbar-thumb-empty:
+	Image: dialog.png
+	PanelRegion: 512, 0, 1, 1, 126, 126, 1, 1
+
 progressbar-thumb-green:
 	Image: healthbars.png
 	PanelRegion: 512, 0, 1, 1, 126, 126, 1, 1
