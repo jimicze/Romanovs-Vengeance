@@ -1,7 +1,11 @@
 #!/bin/sh
 
 set -e
-command -v mono >/dev/null 2>&1 || { echo >&2 "The OpenRA mod SDK requires mono."; exit 1; }
+# Check for either mono or dotnet runtime
+if ! command -v mono >/dev/null 2>&1 && ! command -v dotnet >/dev/null 2>&1; then
+	echo >&2 "The OpenRA mod SDK requires either mono or dotnet runtime."
+	exit 1
+fi
 if command -v python3 >/dev/null 2>&1; then
 	PYTHON="python3"
 else
